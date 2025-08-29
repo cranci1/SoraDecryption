@@ -35,7 +35,7 @@ public struct SoraDecryption {
     /**
      * Encrypt data using AES-256-CBC with fixed key and IV
      */
-    static func encrypt(data: Data) -> Data? {
+    public static func encrypt(data: Data) -> Data? {
         let keyData = self.keyData
         let ivData = self.ivData
         
@@ -78,7 +78,7 @@ public struct SoraDecryption {
     /**
      * Decrypt data using AES-256-CBC with fixed key and IV
      */
-    static func decrypt(data: Data) -> Data? {
+    public static func decrypt(data: Data) -> Data? {
         let keyData = self.keyData
         let ivData = self.ivData
         
@@ -155,7 +155,7 @@ public struct SoraDecryption {
     /**
      * Encrypt a file from bundle or documents directory
      */
-    static func encryptFile(at path: String) -> Data? {
+    public static func encryptFile(at path: String) -> Data? {
         guard let fileData = FileManager.default.contents(atPath: path) else {
             print("Could not read file at path: \(path)")
             return nil
@@ -167,7 +167,7 @@ public struct SoraDecryption {
     /**
      * Decrypt data and return as string (for JavaScript modules)
      */
-    static func decryptToString(data: Data) -> String? {
+    public static func decryptToString(data: Data) -> String? {
         guard let decryptedData = decrypt(data: data) else {
             return nil
         }
