@@ -35,7 +35,7 @@ public struct SoraDecryption {
     /**
      * Decrypt data using AES-256-CBC with fixed key and IV
      */
-    static func decrypt(data: Data) -> Data? {
+    public static func decrypt(data: Data) -> Data? {
         let keyData = self.keyData
         let ivData = self.ivData
         
@@ -97,7 +97,7 @@ public struct SoraDecryption {
     /**
      * Decrypt data and return as string (for JavaScript modules)
      */
-    static func decryptToString(data: Data) -> String? {
+    public static func decryptToString(data: Data) -> String? {
         guard let decryptedData = decrypt(data: data) else {
             return nil
         }
