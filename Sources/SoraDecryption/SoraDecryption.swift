@@ -6,41 +6,57 @@ import CommonCrypto
 
 // MARK: - SoraDecryption
 public struct SoraDecryption {
-    private let key = "afd68119f7afc868797124fd1941f6e0d04e6dcef9e9fc41f858e2a0ba33d4fb"
-    private let keyData: Data
+    private static let keyHex = "afd68119f7afc868797124fd1941f6e0d04e6dcef9e9fc41f858e2a0ba33d4fb"
+    private static let ivData = Data(repeating: 0, count: 16)
     
-    init() {
-        keyData = key.sha256()
+    private static func hexStringToData(_ hex: String) -> Data {
+        var data = Data()
+        var hex = hex
+        
+        while hex.count >= 2 {
+            let start = hex.startIndex
+            let end = hex.index(start, offsetBy: 2)
+            let byteString = String(hex[start..<end])
+            
+            if let byte = UInt8(byteString, radix: 16) {
+                data.append(byte)
+            }
+            
+            hex = String(hex[end...])
+        }
+        
+        return data
     }
     
-    func decrypt(_ encryptedData: String) -> String? {
-        guard let colonIndex = encryptedData.firstIndex(of: ":") else { return nil }
+    private static var keyData: Data {
+        return hexStringToData(keyHex)
+    }
+    
+    /**
+     * Decrypt data using AES-256-CBC with fixed key and IV
+     */
+    static func decrypt(data: Data) -> Data? {
+        let keyData = self.keyData
+        let ivData = self.ivData
         
-        let ivHexSub = encryptedData[..<colonIndex]
-        let encryptedHexSub = encryptedData[encryptedData.index(after: colonIndex)...]
-        
-        guard ivHexSub.count % 2 == 0, encryptedHexSub.count % 2 == 0 else { return nil }
-        guard let ivData = Data(hex: String(ivHexSub)), let encryptedBytes = Data(hex: String(encryptedHexSub)) else { return nil }
-        
-        var decryptedBuffer = Data(count: encryptedBytes.count + kCCBlockSizeAES128)
+        let bufferSize = data.count + kCCBlockSizeAES128
+        var buffer = Data(count: bufferSize)
         var numBytesDecrypted: size_t = 0
         
-        let bufferSize = decryptedBuffer.count
-        
-        let status = decryptedBuffer.withUnsafeMutableBytes { decryptedBytesPtr in
-            encryptedBytes.withUnsafeBytes { encryptedBytesPtr in
-                keyData.withUnsafeBytes { keyBytesPtr in
-                    ivData.withUnsafeBytes { ivBytesPtr in
+        let cryptStatus = buffer.withUnsafeMutableBytes { bufferBytes in
+            data.withUnsafeBytes { dataBytes in
+                keyData.withUnsafeBytes { keyBytes in
+                    ivData.withUnsafeBytes { ivBytes in
                         CCCrypt(
                             CCOperation(kCCDecrypt),
                             CCAlgorithm(kCCAlgorithmAES),
-                            CCOptions(kCCOptionPKCS7Padding),
-                            keyBytesPtr.baseAddress,
+                            CCOptions(0),
+                            keyBytes.bindMemory(to: UInt8.self).baseAddress,
                             keyData.count,
-                            ivBytesPtr.baseAddress,
-                            encryptedBytesPtr.baseAddress,
-                            encryptedBytesPtr.count,
-                            decryptedBytesPtr.baseAddress,
+                            ivBytes.bindMemory(to: UInt8.self).baseAddress,
+                            dataBytes.bindMemory(to: UInt8.self).baseAddress,
+                            data.count,
+                            bufferBytes.bindMemory(to: UInt8.self).baseAddress,
                             bufferSize,
                             &numBytesDecrypted
                         )
@@ -49,47 +65,43 @@ public struct SoraDecryption {
             }
         }
         
-        guard status == kCCSuccess else { return nil }
-        
-        decryptedBuffer.removeLast(decryptedBuffer.count - numBytesDecrypted)
-        
-        return String(data: decryptedBuffer, encoding: .utf8)
-    }
-}
-
-// MARK: - Extensions
-extension String {
-    func sha256() -> Data {
-        let data = self.data(using: .utf8)!
-        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
-        data.withUnsafeBytes {
-            _ = CC_SHA256($0.baseAddress, CC_LONG(data.count), &hash)
-        }
-        return Data(hash)
-    }
-}
-
-extension Data {
-    init?(hex: String) {
-        let utf8 = Array(hex.utf8)
-        let length = utf8.count
-        if length & 1 == 1 { return nil }
-        var data = Data(capacity: length / 2)
-        
-        @inline(__always) func nibble(_ c: UInt8) -> UInt8? {
-            if c >= 48 && c <= 57 { return c - 48 }
-            if c >= 65 && c <= 70 { return c - 55 }
-            if c >= 97 && c <= 102 { return c - 87 }
+        guard cryptStatus == kCCSuccess else {
+            print("Decryption failed with status: \(cryptStatus)")
             return nil
         }
         
-        var i = 0
-        while i < length {
-            guard let hi = nibble(utf8[i]), let lo = nibble(utf8[i + 1]) else { return nil }
-            data.append((hi << 4) | lo)
-            i += 2
+        let decryptedData = Data(buffer.prefix(numBytesDecrypted))
+        return removePKCS7Padding(from: decryptedData)
+    }
+    
+    /**
+     * Remove PKCS7 padding from data
+     */
+    private static func removePKCS7Padding(from data: Data) -> Data? {
+        guard !data.isEmpty else { return nil }
+        
+        let paddingLength = Int(data.last!)
+        guard paddingLength > 0 && paddingLength <= 16 else { return nil }
+        guard data.count >= paddingLength else { return nil }
+        
+        let paddingStart = data.count - paddingLength
+        for i in paddingStart..<data.count {
+            if data[i] != UInt8(paddingLength) {
+                return nil
+            }
         }
         
-        self = data
+        return data.prefix(paddingStart)
+    }
+    
+    /**
+     * Decrypt data and return as string (for JavaScript modules)
+     */
+    static func decryptToString(data: Data) -> String? {
+        guard let decryptedData = decrypt(data: data) else {
+            return nil
+        }
+        
+        return String(data: decryptedData, encoding: .utf8)
     }
 }
