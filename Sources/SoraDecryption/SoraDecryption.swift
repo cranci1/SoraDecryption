@@ -33,9 +33,52 @@ public struct SoraDecryption {
     }
     
     /**
+     * Encrypt data using AES-256-CBC with fixed key and IV
+     */
+    static func encrypt(data: Data) -> Data? {
+        let keyData = self.keyData
+        let ivData = self.ivData
+        
+        let paddedData = addPKCS7Padding(to: data, blockSize: 16)
+        
+        let bufferSize = paddedData.count + kCCBlockSizeAES128
+        var buffer = Data(count: bufferSize)
+        var numBytesEncrypted: size_t = 0
+        
+        let cryptStatus = buffer.withUnsafeMutableBytes { bufferBytes in
+            paddedData.withUnsafeBytes { dataBytes in
+                keyData.withUnsafeBytes { keyBytes in
+                    ivData.withUnsafeBytes { ivBytes in
+                        CCCrypt(
+                            CCOperation(kCCEncrypt),
+                            CCAlgorithm(kCCAlgorithmAES),
+                            CCOptions(0),
+                            keyBytes.bindMemory(to: UInt8.self).baseAddress,
+                            keyData.count,
+                            ivBytes.bindMemory(to: UInt8.self).baseAddress,
+                            dataBytes.bindMemory(to: UInt8.self).baseAddress,
+                            paddedData.count,
+                            bufferBytes.bindMemory(to: UInt8.self).baseAddress,
+                            bufferSize,
+                            &numBytesEncrypted
+                        )
+                    }
+                }
+            }
+        }
+        
+        guard cryptStatus == kCCSuccess else {
+            print("Encryption failed with status: \(cryptStatus)")
+            return nil
+        }
+        
+        return Data(buffer.prefix(numBytesEncrypted))
+    }
+    
+    /**
      * Decrypt data using AES-256-CBC with fixed key and IV
      */
-    public static func decrypt(data: Data) -> Data? {
+    static func decrypt(data: Data) -> Data? {
         let keyData = self.keyData
         let ivData = self.ivData
         
@@ -75,6 +118,21 @@ public struct SoraDecryption {
     }
     
     /**
+     * Add PKCS7 padding to data
+     */
+    private static func addPKCS7Padding(to data: Data, blockSize: Int) -> Data {
+        let paddingLength = blockSize - (data.count % blockSize)
+        let paddingByte = UInt8(paddingLength)
+        var paddedData = data
+        
+        for _ in 0..<paddingLength {
+            paddedData.append(paddingByte)
+        }
+        
+        return paddedData
+    }
+    
+    /**
      * Remove PKCS7 padding from data
      */
     private static func removePKCS7Padding(from data: Data) -> Data? {
@@ -95,9 +153,21 @@ public struct SoraDecryption {
     }
     
     /**
+     * Encrypt a file from bundle or documents directory
+     */
+    static func encryptFile(at path: String) -> Data? {
+        guard let fileData = FileManager.default.contents(atPath: path) else {
+            print("Could not read file at path: \(path)")
+            return nil
+        }
+        
+        return encrypt(data: fileData)
+    }
+    
+    /**
      * Decrypt data and return as string (for JavaScript modules)
      */
-    public static func decryptToString(data: Data) -> String? {
+    static func decryptToString(data: Data) -> String? {
         guard let decryptedData = decrypt(data: data) else {
             return nil
         }
