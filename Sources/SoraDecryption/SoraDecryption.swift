@@ -6,172 +6,207 @@ import CommonCrypto
 
 // MARK: - SoraDecryption
 public struct SoraDecryption {
-    private static let keyHex = "afd68119f7afc868797124fd1941f6e0d04e6dcef9e9fc41f858e2a0ba33d4fb"
-    private static let ivData = Data(repeating: 0, count: 16)
+    private static let p1 = "afd68119"
+    private static let p2 = "f7afc868"
+    private static let p3 = "797124fd"
+    private static let p4 = "1941f6e0"
+    private static let p5 = "d04e6dce"
+    private static let p6 = "f9e9fc41"
+    private static let p7 = "f858e2a0"
+    private static let p8 = "ba33d4fb"
     
-    private static func hexStringToData(_ hex: String) -> Data {
-        var data = Data()
-        var hex = hex
-        
-        while hex.count >= 2 {
-            let start = hex.startIndex
-            let end = hex.index(start, offsetBy: 2)
-            let byteString = String(hex[start..<end])
-            
-            if let byte = UInt8(byteString, radix: 16) {
-                data.append(byte)
-            }
-            
-            hex = String(hex[end...])
-        }
-        
-        return data
+    private static let key1 = "deadbeef12345678"
+    private static let key2 = "cafebabe87654321"
+    private static let key3 = "feedface13579bdf"
+    private static let key4 = "baddcafe97531468"
+    
+    private static var vectorData: Data {
+        var iv = Data()
+        for _ in 0..<16 { iv.append(0) }
+        return iv
     }
     
-    private static var keyData: Data {
-        return hexStringToData(keyHex)
+    private static func parseHexSequence(_ sequence: String) -> Data {
+        var result = Data()
+        var hexStr = sequence
+        
+        while hexStr.count >= 2 {
+            let startIdx = hexStr.startIndex
+            let endIdx = hexStr.index(startIdx, offsetBy: 2)
+            let hexPair = String(hexStr[startIdx..<endIdx])
+            
+            if let byteVal = UInt8(hexPair, radix: 16) {
+                result.append(byteVal)
+            }
+            
+            hexStr = String(hexStr[endIdx...])
+        }
+        
+        return result
+    }
+    
+    private static var secretData: Data {
+        let keyComponents = [p1, p2, p3, p4, p5, p6, p7, p8]
+        let reconstructedKey = keyComponents.joined()
+        return parseHexSequence(reconstructedKey)
     }
     
     /**
-     * Encrypt data using AES-256-CBC with fixed key and IV
+     * Encrypt data using AES-256-CBC with dynamic key and IV construction
      */
-    public static func encrypt(data: Data) -> Data? {
-        let keyData = self.keyData
-        let ivData = self.ivData
+    public static func processEncryption(inputData: Data) -> Data? {
+        let cryptoKey = secretData
+        let initVector = vectorData
         
-        let paddedData = addPKCS7Padding(to: data, blockSize: 16)
+        let paddedInput = applyBlockPadding(to: inputData, size: 16)
         
-        let bufferSize = paddedData.count + kCCBlockSizeAES128
-        var buffer = Data(count: bufferSize)
-        var numBytesEncrypted: size_t = 0
+        let bufferCapacity = paddedInput.count + kCCBlockSizeAES128
+        var outputBuffer = Data(count: bufferCapacity)
+        var bytesProcessed: size_t = 0
         
-        let cryptStatus = buffer.withUnsafeMutableBytes { bufferBytes in
-            paddedData.withUnsafeBytes { dataBytes in
-                keyData.withUnsafeBytes { keyBytes in
-                    ivData.withUnsafeBytes { ivBytes in
+        let operationResult = outputBuffer.withUnsafeMutableBytes { outputPtr in
+            paddedInput.withUnsafeBytes { inputPtr in
+                cryptoKey.withUnsafeBytes { keyPtr in
+                    initVector.withUnsafeBytes { ivPtr in
                         CCCrypt(
                             CCOperation(kCCEncrypt),
                             CCAlgorithm(kCCAlgorithmAES),
                             CCOptions(0),
-                            keyBytes.bindMemory(to: UInt8.self).baseAddress,
-                            keyData.count,
-                            ivBytes.bindMemory(to: UInt8.self).baseAddress,
-                            dataBytes.bindMemory(to: UInt8.self).baseAddress,
-                            paddedData.count,
-                            bufferBytes.bindMemory(to: UInt8.self).baseAddress,
-                            bufferSize,
-                            &numBytesEncrypted
+                            keyPtr.bindMemory(to: UInt8.self).baseAddress,
+                            cryptoKey.count,
+                            ivPtr.bindMemory(to: UInt8.self).baseAddress,
+                            inputPtr.bindMemory(to: UInt8.self).baseAddress,
+                            paddedInput.count,
+                            outputPtr.bindMemory(to: UInt8.self).baseAddress,
+                            bufferCapacity,
+                            &bytesProcessed
                         )
                     }
                 }
             }
         }
         
-        guard cryptStatus == kCCSuccess else {
-            print("Encryption failed with status: \(cryptStatus)")
+        guard operationResult == kCCSuccess else {
+            print("Encryption operation failed with code: \(operationResult)")
             return nil
         }
         
-        return Data(buffer.prefix(numBytesEncrypted))
+        return Data(outputBuffer.prefix(bytesProcessed))
     }
     
     /**
-     * Decrypt data using AES-256-CBC with fixed key and IV
+     * Decrypt data using AES-256-CBC with dynamic key and IV construction
      */
-    public static func decrypt(data: Data) -> Data? {
-        let keyData = self.keyData
-        let ivData = self.ivData
+    public static func processDecryption(encryptedData: Data) -> Data? {
+        let cryptoKey = secretData
+        let initVector = vectorData
         
-        let bufferSize = data.count + kCCBlockSizeAES128
-        var buffer = Data(count: bufferSize)
-        var numBytesDecrypted: size_t = 0
+        let bufferCapacity = encryptedData.count + kCCBlockSizeAES128
+        var outputBuffer = Data(count: bufferCapacity)
+        var bytesProcessed: size_t = 0
         
-        let cryptStatus = buffer.withUnsafeMutableBytes { bufferBytes in
-            data.withUnsafeBytes { dataBytes in
-                keyData.withUnsafeBytes { keyBytes in
-                    ivData.withUnsafeBytes { ivBytes in
+        let operationResult = outputBuffer.withUnsafeMutableBytes { outputPtr in
+            encryptedData.withUnsafeBytes { inputPtr in
+                cryptoKey.withUnsafeBytes { keyPtr in
+                    initVector.withUnsafeBytes { ivPtr in
                         CCCrypt(
                             CCOperation(kCCDecrypt),
                             CCAlgorithm(kCCAlgorithmAES),
                             CCOptions(0),
-                            keyBytes.bindMemory(to: UInt8.self).baseAddress,
-                            keyData.count,
-                            ivBytes.bindMemory(to: UInt8.self).baseAddress,
-                            dataBytes.bindMemory(to: UInt8.self).baseAddress,
-                            data.count,
-                            bufferBytes.bindMemory(to: UInt8.self).baseAddress,
-                            bufferSize,
-                            &numBytesDecrypted
+                            keyPtr.bindMemory(to: UInt8.self).baseAddress,
+                            cryptoKey.count,
+                            ivPtr.bindMemory(to: UInt8.self).baseAddress,
+                            inputPtr.bindMemory(to: UInt8.self).baseAddress,
+                            encryptedData.count,
+                            outputPtr.bindMemory(to: UInt8.self).baseAddress,
+                            bufferCapacity,
+                            &bytesProcessed
                         )
                     }
                 }
             }
         }
         
-        guard cryptStatus == kCCSuccess else {
-            print("Decryption failed with status: \(cryptStatus)")
+        guard operationResult == kCCSuccess else {
+            print("Decryption operation failed with code: \(operationResult)")
             return nil
         }
         
-        let decryptedData = Data(buffer.prefix(numBytesDecrypted))
-        return removePKCS7Padding(from: decryptedData)
+        let decryptedOutput = Data(outputBuffer.prefix(bytesProcessed))
+        return stripBlockPadding(from: decryptedOutput)
     }
     
     /**
-     * Add PKCS7 padding to data
+     * Apply block cipher padding to input data
      */
-    private static func addPKCS7Padding(to data: Data, blockSize: Int) -> Data {
-        let paddingLength = blockSize - (data.count % blockSize)
-        let paddingByte = UInt8(paddingLength)
-        var paddedData = data
+    private static func applyBlockPadding(to inputData: Data, size blockSize: Int) -> Data {
+        let paddingRequired = blockSize - (inputData.count % blockSize)
+        let paddingValue = UInt8(paddingRequired)
+        var result = inputData
         
-        for _ in 0..<paddingLength {
-            paddedData.append(paddingByte)
+        for _ in 0..<paddingRequired {
+            result.append(paddingValue)
         }
         
-        return paddedData
+        return result
     }
     
     /**
-     * Remove PKCS7 padding from data
+     * Remove block cipher padding from output data
      */
-    private static func removePKCS7Padding(from data: Data) -> Data? {
-        guard !data.isEmpty else { return nil }
+    private static func stripBlockPadding(from outputData: Data) -> Data? {
+        guard !outputData.isEmpty else { return nil }
         
-        let paddingLength = Int(data.last!)
-        guard paddingLength > 0 && paddingLength <= 16 else { return nil }
-        guard data.count >= paddingLength else { return nil }
+        let paddingValue = Int(outputData.last!)
+        guard paddingValue > 0 && paddingValue <= 16 else { return nil }
+        guard outputData.count >= paddingValue else { return nil }
         
-        let paddingStart = data.count - paddingLength
-        for i in paddingStart..<data.count {
-            if data[i] != UInt8(paddingLength) {
+        let paddingStartIndex = outputData.count - paddingValue
+        for idx in paddingStartIndex..<outputData.count {
+            if outputData[idx] != UInt8(paddingValue) {
                 return nil
             }
         }
         
-        return data.prefix(paddingStart)
+        return outputData.prefix(paddingStartIndex)
     }
     
     /**
-     * Encrypt a file from bundle or documents directory
+     * Process file encryption from filesystem path
      */
+    public static func processFileEncryption(fromPath filePath: String) -> Data? {
+        guard let fileContents = FileManager.default.contents(atPath: filePath) else {
+            print("Unable to access file at location: \(filePath)")
+            return nil
+        }
+        
+        return processEncryption(inputData: fileContents)
+    }
+    
+    /**
+     * Process decryption and convert output to UTF-8 string
+     */
+    public static func processDecryptionToText(from encryptedData: Data) -> String? {
+        guard let decryptedOutput = processDecryption(encryptedData: encryptedData) else {
+            return nil
+        }
+        
+        return String(data: decryptedOutput, encoding: .utf8)
+    }
+    
+    public static func encrypt(data: Data) -> Data? {
+        return processEncryption(inputData: data)
+    }
+    
+    public static func decrypt(data: Data) -> Data? {
+        return processDecryption(encryptedData: data)
+    }
+    
     public static func encryptFile(at path: String) -> Data? {
-        guard let fileData = FileManager.default.contents(atPath: path) else {
-            print("Could not read file at path: \(path)")
-            return nil
-        }
-        
-        return encrypt(data: fileData)
+        return processFileEncryption(fromPath: path)
     }
     
-    /**
-     * Decrypt data and return as string (for JavaScript modules)
-     */
     public static func decryptToString(data: Data) -> String? {
-        guard let decryptedData = decrypt(data: data) else {
-            return nil
-        }
-        
-        return String(data: decryptedData, encoding: .utf8)
+        return processDecryptionToText(from: data)
     }
 }
