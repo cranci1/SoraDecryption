@@ -6,6 +6,11 @@ import CommonCrypto
 
 // MARK: - SoraDecryption
 public struct SoraDecryption {
+    private static let key1 = "deadbeef12345678"
+    private static let key2 = "cafebabe87654321"
+    private static let key3 = "feedface13579bdf"
+    private static let key4 = "baddcafe97531468"
+    
     private static let p1 = "afd68119"
     private static let p2 = "f7afc868"
     private static let p3 = "797124fd"
@@ -14,11 +19,6 @@ public struct SoraDecryption {
     private static let p6 = "f9e9fc41"
     private static let p7 = "f858e2a0"
     private static let p8 = "ba33d4fb"
-    
-    private static let key1 = "deadbeef12345678"
-    private static let key2 = "cafebabe87654321"
-    private static let key3 = "feedface13579bdf"
-    private static let key4 = "baddcafe97531468"
     
     private static var vectorData: Data {
         var iv = Data()
